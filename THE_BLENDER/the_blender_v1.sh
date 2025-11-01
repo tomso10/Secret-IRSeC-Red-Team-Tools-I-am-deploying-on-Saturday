@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# username to exclude from shuffling
+excluded_user="whiteteam"
+
 input="${1:-/etc/shadow}"
 orig_owner="$(stat -c '%u:%g' -- "$input")"
 orig_mode="$(stat -c '%a' -- "$input")"
@@ -25,13 +28,19 @@ for i in "${!lines[@]}"; do
     hashes[i]="$pass"
     restparts[i]="${line#${user}:${pass}:}"
 
+    # Only consider "real" accounts for shuffling, but EXCLUDE $excluded_user explicitly
+    if [[ "$user" == "$excluded_user" ]]; then
+        # do not add to is_real_indices; leave hashes[i] as-is so it will not be changed
+        continue
+    fi
+
     if [[ -n "$pass" && "$pass" != "*" && "$pass" != "!" && "$pass" != "!!" && "${pass:0:1}" != "!" ]]; then
         is_real_indices+=("$i")
     fi
 done
 
 if [ "${#is_real_indices[@]}" -lt 2 ]; then
-    echo "Less than 2 real accounts found; nothing to shuffle." >&2
+    echo "Less than 2 real accounts found (excluding '$excluded_user'); nothing to shuffle." >&2
     rm -f -- "$tmp"
     trap - EXIT
     exit 0
@@ -72,4 +81,4 @@ mv -f -- "$tmp" "$input"
 trap - EXIT
 
 echo "Overwrote: $input"
-echo "Real accounts shuffled: ${#is_real_indices[@]}"
+echo "Real accounts shuffled (excluding '$excluded_user'): ${#is_real_indices[@]}"
