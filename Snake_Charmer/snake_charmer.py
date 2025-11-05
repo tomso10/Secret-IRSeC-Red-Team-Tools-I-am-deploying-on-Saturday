@@ -31,13 +31,17 @@ def command_line_input():
 
     args = parser.parse_args()
 
-
+    command = str(args.C)
+    host=str(args.H).upper()
+    os=str(args.O).upper()
     password=args.P
+
     if str(password)==None:
         password=DEFAULT_PASSWORD
     
-    os=str(args.O).upper()
 
+
+    
     if os == "L":
         os="LINUX"
     if os == "W":
@@ -45,7 +49,7 @@ def command_line_input():
     else:
         os == "LINUX"
 
-    return (args.H,args.U,password,args.C,os)
+    return (host,args.U,password,command,os)
         
 
 
@@ -223,10 +227,33 @@ def box_attack(values_tuple, box=None):#TODO fix
             targets.append("10."+str(num)+".1."+str(HOSTNAME_DICT_IP_LAN[target_box]))        
     run_multiple_multithread(values_tuple,targets)
         
+# def all_attack(values_tuple):
+#     for key in HOSTNAME_DICT_OS:
+#         if HOSTNAME_DICT_OS[key]==values_tuple[4]:
+#                 box_attack(values_tuple,key)
+
 def all_attack(values_tuple):
-    for key in HOSTNAME_DICT_OS:
-        if HOSTNAME_DICT_OS[key]==values_tuple[4]:
-                box_attack(values_tuple,key)
+    from concurrent.futures import ThreadPoolExecutor
+    tasks = []
+    with ThreadPoolExecutor(max_workers=WORKERS * 5) as executor:  # scale up if needed
+        for key in HOSTNAME_DICT_OS:
+            if HOSTNAME_DICT_OS[key] == values_tuple[4]:
+                targets = []
+                if key in HOSTNAME_DICT_IP_CLOUD:
+                    for num in range(1, NUM_TEAMS + 1):
+                        targets.append(f"192.168.{num}.{HOSTNAME_DICT_IP_CLOUD[key]}")
+                if key in HOSTNAME_DICT_IP_LAN:
+                    for num in range(1, NUM_TEAMS + 1):
+                        targets.append(f"10.{num}.1.{HOSTNAME_DICT_IP_LAN[key]}")
+
+                for ip in targets:
+                    if values_tuple[4] == "WINDOWS":
+                        tasks.append(executor.submit(single_connection_command_windows, values_tuple, hostname_in=ip))
+                    else:
+                        tasks.append(executor.submit(single_connection_command_linux, values_tuple, hostname_in=ip))
+
+        for future in tasks:
+            future.result()  # wait for all to finish (optional)
 
 
 # def print_side_by_side(a: str, b: str, gap: int = 4):
