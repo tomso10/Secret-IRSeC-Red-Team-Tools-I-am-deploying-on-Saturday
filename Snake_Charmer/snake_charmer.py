@@ -7,14 +7,17 @@ from concurrent.futures import ThreadPoolExecutor
 import re
 from colorama import Fore, Style
 
-# print(Fore.RED + "This is red text")
-# print(Fore.GREEN + "This is green text")
-# print(Style.RESET_ALL)  # Reset colors
 
 
 
+#CHANGABLES
 WORKERS=30 #how many threads run at once
 HOSTNAME_DICT_LINUX={'BIG BANG':1,'DINO ASTEROID':2,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
+HOSTNAME_DICT_OS={'BIG BANG':"LINUX",'DINO ASTEROID':"LINUX","WRIGHT BROTHERS":"WINDOWS","MOON LANDING":"WINDOWS","PYRAMIDS":"WINDOWS","FIRST OLYMPICS":"WINDOWS","SILK ROAD":"WINDOWS",'VIKING RAIDS':"LINUX",'ENLIGHTENMENT':"LINUX",'CHERNOBYL':"LINUX"}
+HOSTNAME_DICT_IP_CLOUD={'BIG BANG':1,'DINO ASTEROID':2,"WRIGHT BROTHERS":3,"MOON LANDING":4}
+HOSTNAME_DICT_IP_LAN={"PYRAMIDS":1,"FIRST OLYMPICS":2,"SILK ROAD":3,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
+NUM_TEAMS=18
+#IP FORMAT needs to be updated if cloud isnt 192.168 and cloud is 10. 
 
 def single_connection_command(values_tuple,hostname=None):
     hostname_in,username_in,password_in,command_in,os =values_tuple
@@ -23,42 +26,45 @@ def single_connection_command(values_tuple,hostname=None):
 
     if (os == "L" or os == "LINUX"):
         # print("hostname 3!",hostname)
-        single_connection_command_linux(values_tuple,hostname_in=hostname)    
+        single_connection_command_linux(values_tuple,hostname_in=hostname_in)    
     elif (os == "W" or os == "WINDOWS"):
-        single_connection_command_windows(values_tuple,hostname=hostname)
+        single_connection_command_windows(values_tuple,hostname_in=hostname_in)
     else:
         print("INVALID")
 
-
-
-def single_connection_command_windows(values_tuple):
-    hostname_in,username_in,password_in,command_in,os=values_tuple
-    pass
-
-def single_connection_command_linux(values_tuple, commmand=None, hostname_in=None):
-    print("its linuxing time")
+def single_connection_command_windows(values_tuple, commmand=None, hostname_in=None):
     hostname,username_in,password_in,command_in,os=values_tuple
     if commmand != None:
         command_in=commmand
     if hostname_in != None:
         hostname=hostname_in
-        print("hostname 3!",hostname)
+        # print("hostname 3!",hostname)
+    print(hostname_in)
+    
+
+def single_connection_command_linux(values_tuple, commmand=None, hostname_in=None):
+    # print("its linuxing time")
+    hostname,username_in,password_in,command_in,os=values_tuple
+    if commmand != None:
+        command_in=commmand
+    if hostname_in != None:
+        hostname=hostname_in
+        # print("hostname 3!",hostname)
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        print("Connecting to box", hostname_in)
+        print(Style.BRIGHT,Fore.CYAN,Style.BRIGHT,"Connecting to box ",Style.RESET_ALL, hostname_in,sep="")
         client.connect(hostname_in,username=username_in,password=password_in,timeout=5)
         stdin, stdout, stderr = client.exec_command(command_in)
-        print(Fore.BLUE, hostname_in,": ",Fore.GREEN, stdout.read().decode(),Style.RESET_ALL,sep="")
+        print(Style.BRIGHT,Fore.BLUE, hostname_in,": ",Fore.GREEN, stdout.read().decode(),Style.RESET_ALL,sep="")
     except paramiko.AuthenticationException :
         print("error, invalid credentials for box: ",hostname,", ",username_in,":",password_in,sep="")
     except paramiko.SSHException as e:
         print("ssh error,",e)
     except TimeoutError:
-        print(Fore.RED,"Box timed out! host",Fore.WHITE,hostname,Fore.RED,"is not responding, likely down or fire walled off",Style.RESET_ALL)
+        print(Style.BRIGHT,Fore.RED,"Box timed out! host ",Style.RESET_ALL,hostname,Style.BRIGHT,Fore.RED," is not responding, likely down or fire walled off",Style.RESET_ALL,sep="")
     except Exception as e:
         print("Unexpected error on host ",hostname,", ",e,sep="")
-
 
 #MAKES THE CUSTOM IPS ONE WILDCARD
 def make_target_list(ip_string, variable_list): # pass it a string to be modified (ex 192.168.x.2 or 10.x.1.5), and a list of numbers to fill it in with ex [1,2,5,6,7,8]
@@ -68,43 +74,74 @@ def make_target_list(ip_string, variable_list): # pass it a string to be modifie
     return to_return
 
 #RUNS THE MINIONS, also does the OS switch
-def run_multiple_multithread(values_tuple,ip_list_val=None):
-    ip_list, username,password,command,os=values_tuple
-    if ip_list_val!=None:
-        ip_list=ip_list_val
+def run_multiple_multithread(values_tuple,ip_list):
+    ip, username,password,command,os=values_tuple
 
     if (os == "L" or os == "LINUX"):
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
             for ip in ip_list:
-                print("LINUX")
-                print(ip)
+                # print("LINUX")
+                # print(ip)
                 # exit()
-                executor.submit(single_connection_command_linux, values_tuple,ip)
+                executor.submit(single_connection_command_linux, values_tuple,hostname_in=ip)
     elif (os == "W" or os == "WINDOWS"):
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
             for ip in ip_list:
-                executor.submit(single_connection_command_windows,ip,username,password,command)
+                executor.submit(single_connection_command_windows, values_tuple,hostname_in=ip)
             
 
 #ATTACK FUNCTIONS
 def team_attack(values_tuple):
+    os = values_tuple[4]
+    teamname=values_tuple[0]
+
+    teamnum= int(re.search(r'(\d{1,2})$', teamname).group(1))
+    # print("NUM",teamnum)
+    if (teamnum>NUM_TEAMS or (teamnum)<0):
+        raise IndexError("Team number is not between 1 and 18")
 
     input_in=values_tuple[0]
-
-    targets=make_target_list("192.168."+str(input_in)+".x",[1,2])
-    targets2=make_target_list("10."+str(input_in)+".1."+'x',[4,5,6])
-    targets=targets+targets2
+    targets=list()
+    # targets=make_target_list("192.168."+str(input_in)+".x",[1,2])
+    # targets2=make_target_list("10."+str(input_in)+".1."+'x',[4,5,6])
+    # targets=targets+targets2
+    for target in HOSTNAME_DICT_IP_CLOUD:
+            if HOSTNAME_DICT_OS[target]==os:
+                targets.append("192.168."+str(teamnum)+"."+str(HOSTNAME_DICT_IP_CLOUD[target]))
+    for target in HOSTNAME_DICT_IP_LAN:
+            if HOSTNAME_DICT_OS[target]==os:
+                targets.append("10."+str(teamnum)+".1."+str(HOSTNAME_DICT_IP_LAN[target]))
+    
+    # print(targets)
     run_multiple_multithread(values_tuple,targets)
 
-def box_attack(values_tuple, input_in=None):
-    if input_in==None:
-        input_in=values_tuple[0]
+
+def box_attack(values_tuple, box=None):#TODO fix
+    target_box=values_tuple[0]
+    if box!=None:#TODO can prob make this just if box
+        target_box=box
+
+    # if targets_input[-2:-1]=="1":
+    #     teamnum=targets_input[-2:]
+    # else:
+    #     teamnum=targets_input[-1:]
+    # if (int(teamnum)>=NUM_TEAMS and int(teamnum)<0):
+    #     raise IndexError("Team number is not between 1 and 18")
+
     
+    # targets=list()
+    # if HOSTNAME_DICT_LINUX[input_in] <3:
+    #     targets=make_target_list("192.168.x."+str(HOSTNAME_DICT_LINUX[input_in]),list(range(1,19)))
+    # else:
+    #     targets=make_target_list("10.x.1."+str(HOSTNAME_DICT_LINUX[input_in]),list(range(1,19)))
+
     targets=list()
-    if HOSTNAME_DICT_LINUX[input_in] <3:
-        targets=make_target_list("192.168.x."+str(HOSTNAME_DICT_LINUX[input_in]),list(range(1,19)))
-    else:
-        targets=make_target_list("10.x.1."+str(HOSTNAME_DICT_LINUX[input_in]),list(range(1,19)))
+    if target_box in HOSTNAME_DICT_IP_CLOUD:
+        for num in range(1,NUM_TEAMS+1):
+            targets.append("192.168."+str(num)+"."+str(HOSTNAME_DICT_IP_CLOUD[target_box]))
+    elif target_box in str(HOSTNAME_DICT_IP_LAN):
+        for num in range(1,NUM_TEAMS+1):
+            targets.append("10."+str(num)+".1."+str(HOSTNAME_DICT_IP_LAN[target_box]))        
     run_multiple_multithread(values_tuple,targets)
         
 def all_attack(values_tuple):
@@ -175,7 +212,11 @@ def cli_interface():
 
     command=input("\nCommand to run: ")
     os=input("Linux or Windows: ").upper()
-
+    if os == "L":
+        os="LINUX"
+    if os == "W":
+        os="WINDOWS"
+    
     if os not in ["LINUX","L","WINDOWS","W"]:
         print("Defaulting to linux")
         os="LINUX"
@@ -185,16 +226,10 @@ def cli_interface():
     values_tuple=targets_input,username,password,command,os
     
 #team attack
-    if "TEAM" in targets_input:
-        if targets_input[-2:-1]=="1":
-            teamnum=targets_input[-2:]
-        else:
-            teamnum=targets_input[-1:]
-        if (int(teamnum)>19 and int(teamnum)<0):
-            raise IndexError("Team number is not between 1 and 18")    
-        team_attack(teamnum,values_tuple)
+    if "TEAM" in targets_input:    
+        team_attack(values_tuple)
 #hostname of box attack
-    elif any(box in targets_input for box in HOSTNAME_DICT_LINUX):box_attack(values_tuple)
+    elif any(box in targets_input for box in HOSTNAME_DICT_OS):box_attack(values_tuple)
 #all attack
     elif "ALL" in targets_input:all_attack(values_tuple)
 #wildcard attack
