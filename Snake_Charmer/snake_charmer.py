@@ -12,12 +12,42 @@ import argparse
 
 #CHANGABLES
 WORKERS=30 #how many threads run at once
-HOSTNAME_DICT_LINUX={'BIG BANG':1,'DINO ASTEROID':2,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
+# HOSTNAME_DICT_LINUX={'BIG BANG':1,'DINO ASTEROID':2,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
 HOSTNAME_DICT_OS={'BIG BANG':"LINUX",'DINO ASTEROID':"LINUX","WRIGHT BROTHERS":"WINDOWS","MOON LANDING":"WINDOWS","PYRAMIDS":"WINDOWS","FIRST OLYMPICS":"WINDOWS","SILK ROAD":"WINDOWS",'VIKING RAIDS':"LINUX",'ENLIGHTENMENT':"LINUX",'CHERNOBYL':"LINUX"}
 HOSTNAME_DICT_IP_CLOUD={'BIG BANG':1,'DINO ASTEROID':2,"WRIGHT BROTHERS":3,"MOON LANDING":4}
 HOSTNAME_DICT_IP_LAN={"PYRAMIDS":1,"FIRST OLYMPICS":2,"SILK ROAD":3,'VIKING RAIDS':4,'ENLIGHTENMENT':5,'CHERNOBYL':6}
 NUM_TEAMS=18
+DEFAULT_PASSWORD="Change.me123!"
+
 #IP FORMAT needs to be updated if cloud isnt 192.168.x.y and cloud is 10.x.1.y 
+
+def command_line_input():
+    parser = argparse.ArgumentParser(description="Run a command on a host")
+    parser.add_argument("-H", required=False, help="Host (ip, ip range, host, team, all, localhost)")
+    parser.add_argument("-U", required=False, help="Username")
+    parser.add_argument("-P", required=False, help="Password")
+    parser.add_argument("-C", required=False, help="Command")
+    parser.add_argument("-O", required=False, help="Operating system (L, W, Linux, or Windows)")
+
+    args = parser.parse_args()
+
+
+    password=args.P
+    if str(password)==None:
+        password=DEFAULT_PASSWORD
+    
+    os=str(args.O).upper()
+
+    if os == "L":
+        os="LINUX"
+    if os == "W":
+        os="WINDOWS"
+    else:
+        os == "LINUX"
+
+    return (args.H,args.U,password,args.C,os)
+        
+
 
 def single_connection_command(values_tuple,hostname=None):
     hostname_in,username_in,password_in,command_in,os =values_tuple
@@ -57,9 +87,11 @@ def single_connection_command_windows(values_tuple, commmand=None, hostname_in=N
             return session.run_cmd(command_in)
 
         with ThreadPoolExecutor(max_workers=1) as executor:
+            print(Style.BRIGHT,Fore.CYAN,"Connecting to box ",Fore.BLUE, hostname_in,Style.RESET_ALL,sep="")
             future = executor.submit(_run)
             try:
-                result = future.result(timeout=30)  # seconds
+                result = future.result(timeout=5)  # seconds
+                
             except FutureTimeoutError:
                 print(Style.BRIGHT, Fore.RED, "Box timed out! host ", Fore.BLUE, hostname,
                       Fore.RED, " is not responding, likely down or fire walled off", Style.RESET_ALL, sep="")
@@ -192,8 +224,9 @@ def box_attack(values_tuple, box=None):#TODO fix
     run_multiple_multithread(values_tuple,targets)
         
 def all_attack(values_tuple):
-    for key in HOSTNAME_DICT_LINUX:
-        box_attack(values_tuple,key)
+    for key in HOSTNAME_DICT_OS:
+        if HOSTNAME_DICT_OS[key]==values_tuple[4]:
+                box_attack(values_tuple,key)
 
 
 # def print_side_by_side(a: str, b: str, gap: int = 4):
@@ -242,55 +275,58 @@ def expand_wildcards(values_tuple,ip_val=None): #pos 2: wildcard_dict,
     # print(expanded_ips)
     run_multiple_multithread(values_tuple,expanded_ips)
     
-    
-    
-
-
-  
 #CLI
 def cli_interface():
+    print("Hint! You can pass all args through the command line")
     username=input("Target user: ")
     password=input("Target Password (leave blank for default): ")
     
     if password=="":
-        password="Change.me123!"
+        password=DEFAULT_PASSWORD
 
     print("Using credentials ",username,":",password,sep="")
 
     command=input("\nCommand to run: ")
-    os=input("Linux or Windows: ").upper()
+    os=input("Linux or Windows: (Linux Default) ").upper()
     if os == "L":
         os="LINUX"
     if os == "W":
         os="WINDOWS"
+    else:
+        os == "LINUX"
     
-    if os not in ["LINUX","L","WINDOWS","W"]:
-        print("Defaulting to linux")
-        os="LINUX"
+        
 
     targets_input = input("Enter either a: \n-Single IP address (192.168.1.1)\n-A IP Address range (192.168.2,1-18, 10.1-4.3.10-18)\n-A single team name ('team01','team2', ... ,'team18'), \n-Single box type ('Big Bang, Dino Asteroid, Viking Raids, Enlightenment, Chernobyl, etc')\n-All ('All')\nInput: ").upper()
     # HOSTNAME_DICT_LINUX=['BIG BANG','DINO ASTEROID','VIKING RAIDS','ENLIGHTENMENT','CHERNOBYL']
     values_tuple=targets_input,username,password,command,os
-    
-#team attack
+    test_input_field(values_tuple)
+
+def test_input_field(values_tuple):
+    #team attack
+    targets_input=values_tuple[0]
     if "TEAM" in targets_input:    
         team_attack(values_tuple)
-#hostname of box attack
+    #hostname of box attack
     elif any(box in targets_input for box in HOSTNAME_DICT_OS):box_attack(values_tuple)
-#all attack
+    #all attack
     elif "ALL" in targets_input:all_attack(values_tuple)
-#wildcard attack
+    #wildcard attack
     elif "-" in targets_input:
         expand_wildcards(values_tuple)
-
-#single ip or localhost
+    #single ip or localhost
     elif is_ip(targets_input) or targets_input=="LOCALHOST":single_connection_command(values_tuple) 
-#failed to match
+    #failed to match
     else:print("No matching entries!!")
 
         
 def main():
-    cli_interface()
+    command_line_tuple=command_line_input()
+    if None in (command_line_tuple[:-2]):
+        cli_interface()
+    else:
+        test_input_field(command_line_tuple)
+
 
 if __name__=="__main__":
     main()
